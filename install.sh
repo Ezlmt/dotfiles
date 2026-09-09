@@ -254,6 +254,8 @@ setup_tmux() {
   # Install Tmux plugins headless
   if [ -x "${TPM_DIR}/bin/install_plugins" ]; then
     info "Installing Tmux plugins..."
+    export TMUX_PLUGIN_MANAGER_PATH="${TMUX_CONFIG_DIR}/plugins/"
+    tmux start-server \; source-file "${TMUX_CONFIG_DIR}/tmux.conf" 2>/dev/null || true
     "${TPM_DIR}/bin/install_plugins" || true
   fi
   success "Tmux configuration ready."
