@@ -273,10 +273,18 @@ setup_tmux() {
 
   # Install TPM
   TPM_DIR="${TMUX_CONFIG_DIR}/plugins/tpm"
-  if [ ! -d "${TPM_DIR}" ]; then
+  if [ ! -f "${TPM_DIR}/tpm" ]; then
     info "Cloning Tmux Plugin Manager (TPM)..."
+    rm -rf "${TPM_DIR}"
     git clone https://github.com/tmux-plugins/tpm "${TPM_DIR}"
   fi
+
+  # Clean up any empty submodule placeholder directories so TPM won't falsely treat them as installed
+  for p in "${TMUX_CONFIG_DIR}/plugins"/*; do
+    if [ -d "$p" ] && [ ! -d "$p/.git" ]; then
+      rm -rf "$p"
+    fi
+  done
 
   # Install Tmux plugins headless
   if [ -x "${TPM_DIR}/bin/install_plugins" ]; then
