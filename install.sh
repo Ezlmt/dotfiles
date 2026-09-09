@@ -99,16 +99,38 @@ install_packages() {
       fi
 
       # Ensure modern Neovim (>= 0.10)
-      NVIM_VER="$(nvim --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1 || echo "0.0")"
-      if [ "$(echo "$NVIM_VER < 0.10" | bc 2>/dev/null || echo "1")" -eq 1 ]; then
-        info "Installing latest Neovim binary..."
-        NVIM_TAR="nvim-linux-${ARCH}.tar.gz"
+      NEED_NVIM=false
+      if ! command -v nvim >/dev/null 2>&1; then
+        NEED_NVIM=true
+      else
+        NVIM_VER_STR="$(nvim --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1 || true)"
+        if [ -z "$NVIM_VER_STR" ]; then
+          NEED_NVIM=true
+        else
+          NVIM_MAJOR="${NVIM_VER_STR%%.*}"
+          NVIM_MINOR="${NVIM_VER_STR##*.}"
+          if [ "${NVIM_MAJOR:-0}" -lt 1 ] && [ "${NVIM_MINOR:-0}" -lt 10 ]; then
+            NEED_NVIM=true
+          fi
+        fi
+      fi
+
+      if [ "$NEED_NVIM" = true ]; then
+        info "Installing latest Neovim binary from GitHub releases..."
+        NVIM_ARCH="$ARCH"
+        [ "$ARCH" = "aarch64" ] && NVIM_ARCH="arm64"
+        NVIM_TAR="nvim-linux-${NVIM_ARCH}.tar.gz"
         curl -fsSL -o "/tmp/${NVIM_TAR}" "https://github.com/neovim/neovim/releases/latest/download/${NVIM_TAR}" || true
         if [ -f "/tmp/${NVIM_TAR}" ]; then
-          mkdir -p "${HOME}/.local/nvim"
+          mkdir -p "${HOME}/.local/nvim" "${HOME}/.local/bin"
           tar -xzf "/tmp/${NVIM_TAR}" -C "${HOME}/.local/nvim" --strip-components=1
           ln -sf "${HOME}/.local/nvim/bin/nvim" "${HOME}/.local/bin/nvim"
+          sudo ln -sf "${HOME}/.local/bin/nvim" /usr/local/bin/nvim 2>/dev/null || true
           rm -f "/tmp/${NVIM_TAR}"
+          export PATH="${HOME}/.local/bin:${PATH}"
+          success "Neovim installed to ${HOME}/.local/bin/nvim"
+        else
+          error "Failed to download Neovim binary."
         fi
       fi
 
@@ -136,8 +158,13 @@ install_packages() {
           rm -rf "/tmp/${YAZI_ZIP}" /tmp/yazi_extracted
         fi
       fi
-      ;;
   esac
+  # Ensure ~/.local/bin is in PATH for non-zsh shells too
+  for pf in "${HOME}/.bashrc" "${HOME}/.profile"; do
+    if [ -f "$pf" ] && ! grep -q '\.local/bin' "$pf" 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"' >> "$pf"
+    fi
+  done
   success "Base packages installed."
 }
 
