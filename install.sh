@@ -3,7 +3,7 @@ set -e
 
 # ==============================================================================
 # Ezlmt's Automated Dotfiles & Development Environment Bootstrap
-# Works on macOS, Ubuntu/Debian, Arch Linux, and Fedora
+# Supports macOS, Ubuntu/Debian, Arch Linux, and Fedora
 # ==============================================================================
 
 # Color output helpers
@@ -72,7 +72,7 @@ install_packages() {
       if command -v apt-get >/dev/null 2>&1; then
         info "Debian/Ubuntu detected, updating apt..."
         sudo apt-get update -y || true
-        sudo apt-get install -y git curl zsh tmux ripgrep fd-find fzf build-essential unzip fontconfig || true
+        sudo apt-get install -y git curl zsh tmux ripgrep fd-find fzf build-essential unzip || true
         sudo apt-get install -y zoxide lazygit || true
 
         # Symlink fd -> fdfind
@@ -82,11 +82,11 @@ install_packages() {
 
       elif command -v pacman >/dev/null 2>&1; then
         info "Arch Linux detected..."
-        sudo pacman -S --needed --noconfirm git curl zsh tmux neovim ripgrep fd fzf zoxide lazygit yazi base-devel unzip fontconfig || true
+        sudo pacman -S --needed --noconfirm git curl zsh tmux neovim ripgrep fd fzf zoxide lazygit yazi base-devel unzip || true
 
       elif command -v dnf >/dev/null 2>&1; then
         info "Fedora detected..."
-        sudo dnf install -y git curl zsh tmux neovim ripgrep fd-find fzf zoxide lazygit unzip fontconfig || true
+        sudo dnf install -y git curl zsh tmux neovim ripgrep fd-find fzf zoxide lazygit unzip || true
         if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
           ln -sf "$(command -v fdfind)" "${HOME}/.local/bin/fd"
         fi
@@ -142,51 +142,7 @@ install_packages() {
 }
 
 # ------------------------------------------------------------------------------
-# 2. Setup Maple Mono NF Font (Nerd Font with Ligatures / 连字版)
-# ------------------------------------------------------------------------------
-install_fonts() {
-  info "Installing Maple Mono NF font (Nerd Font with coding ligatures)..."
-  OS="$(uname -s)"
-  FONT_URL="https://github.com/subframe7536/maple-font/releases/latest/download/MapleMono-NF.zip"
-
-  case "$OS" in
-    Darwin)
-      FONT_DIR="${HOME}/Library/Fonts"
-      mkdir -p "${FONT_DIR}"
-      if ! ls "${FONT_DIR}"/MapleMono-NF* >/dev/null 2>&1; then
-        info "Downloading Maple Mono NF for macOS..."
-        curl -fsSL -o /tmp/MapleMono-NF.zip "${FONT_URL}"
-        unzip -q -o /tmp/MapleMono-NF.zip -d /tmp/maple_extracted
-        cp -f /tmp/maple_extracted/*.ttf "${FONT_DIR}/" 2>/dev/null || cp -f /tmp/maple_extracted/*/*.ttf "${FONT_DIR}/" 2>/dev/null || true
-        rm -rf /tmp/MapleMono-NF.zip /tmp/maple_extracted
-        success "Installed Maple Mono NF to ~/Library/Fonts"
-      else
-        success "Maple Mono NF is already installed in ~/Library/Fonts"
-      fi
-      ;;
-
-    Linux)
-      FONT_DIR="${HOME}/.local/share/fonts/MapleMono-NF"
-      mkdir -p "${FONT_DIR}"
-      if ! ls "${FONT_DIR}"/MapleMono-NF* >/dev/null 2>&1; then
-        info "Downloading Maple Mono NF for Linux..."
-        curl -fsSL -o /tmp/MapleMono-NF.zip "${FONT_URL}"
-        unzip -q -o /tmp/MapleMono-NF.zip -d /tmp/maple_extracted
-        cp -f /tmp/maple_extracted/*.ttf "${FONT_DIR}/" 2>/dev/null || cp -f /tmp/maple_extracted/*/*.ttf "${FONT_DIR}/" 2>/dev/null || true
-        rm -rf /tmp/MapleMono-NF.zip /tmp/maple_extracted
-        if command -v fc-cache >/dev/null 2>&1; then
-          fc-cache -f "${FONT_DIR}" || true
-        fi
-        success "Installed Maple Mono NF to ~/.local/share/fonts/MapleMono-NF"
-      else
-        success "Maple Mono NF is already installed in ~/.local/share/fonts"
-      fi
-      ;;
-  esac
-}
-
-# ------------------------------------------------------------------------------
-# 3. Setup Oh My Zsh, Powerlevel10k & Zsh Plugins
+# 2. Setup Oh My Zsh, Powerlevel10k & Zsh Plugins
 # ------------------------------------------------------------------------------
 setup_zsh() {
   info "Setting up Oh My Zsh and plugins..."
@@ -227,7 +183,7 @@ setup_zsh() {
 }
 
 # ------------------------------------------------------------------------------
-# 4. Link Dotfiles (~/.zshrc, ~/.p10k.zsh)
+# 3. Link Dotfiles (~/.zshrc, ~/.p10k.zsh)
 # ------------------------------------------------------------------------------
 link_dotfiles() {
   info "Linking shell configurations..."
@@ -251,7 +207,7 @@ link_dotfiles() {
 }
 
 # ------------------------------------------------------------------------------
-# 5. Setup Neovim (Ezlmt/nvim)
+# 4. Setup Neovim (Ezlmt/nvim)
 # ------------------------------------------------------------------------------
 setup_nvim() {
   info "Setting up Neovim configuration (Ezlmt/nvim)..."
@@ -274,7 +230,7 @@ setup_nvim() {
 }
 
 # ------------------------------------------------------------------------------
-# 6. Setup Tmux (Ezlmt/tmux) & TPM
+# 5. Setup Tmux (Ezlmt/tmux) & TPM
 # ------------------------------------------------------------------------------
 setup_tmux() {
   info "Setting up Tmux configuration (Ezlmt/tmux)..."
@@ -304,7 +260,7 @@ setup_tmux() {
 }
 
 # ------------------------------------------------------------------------------
-# 7. Setup Yazi (Ezlmt/yazi)
+# 6. Setup Yazi (Ezlmt/yazi)
 # ------------------------------------------------------------------------------
 setup_yazi() {
   info "Setting up Yazi file manager configuration (Ezlmt/yazi)..."
@@ -327,7 +283,7 @@ setup_yazi() {
 }
 
 # ------------------------------------------------------------------------------
-# 8. Shell Default Switch
+# 7. Shell Default Switch
 # ------------------------------------------------------------------------------
 setup_shell() {
   if command -v zsh >/dev/null 2>&1; then
@@ -344,7 +300,6 @@ setup_shell() {
 # ------------------------------------------------------------------------------
 main() {
   install_packages
-  install_fonts
   setup_zsh
   link_dotfiles
   setup_tmux
@@ -358,7 +313,9 @@ main() {
   echo -e "${GREEN}${BOLD}==============================================================${NC}"
   echo
   echo "Next steps:"
-  echo "1. Terminal Font: Set your terminal font to 'Maple Mono NF' (with ligatures supported)"
+  echo "1. On your local terminal emulator (WezTerm, Ghostty, Kitty, iTerm2, etc.):"
+  echo "   - Font: Set to 'Maple Mono NF' (or any Nerd Font)"
+  echo "   - Ligatures: Enable ligatures support"
   echo "2. Restart your terminal or run: exec zsh"
   echo "3. Launch tmux with: tmux"
   echo "4. Launch nvim with: nvim (or alias 'n')"
