@@ -35,7 +35,104 @@ fi
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "${HOME}/.local/bin" "${HOME}/.config" "${HOME}/go/bin"
-export PATH="${HOME}/.local/bin:${HOME}/go/bin:${PATH}"
+
+# Profile and execution options
+PROFILE=""
+INTERACTIVE=true
+
+detect_recommended_profile() {
+  if [ -d "/google" ] || [[ "$(hostname 2>/dev/null)" == *".googlers.com"* ]]; then
+    echo "android-hal"
+  else
+    echo "core"
+  fi
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -p|--profile)
+        PROFILE="$2"
+        shift 2
+        ;;
+      --core)
+        PROFILE="core"
+        shift
+        ;;
+      -y|--yes|--non-interactive)
+        INTERACTIVE=false
+        shift
+        ;;
+      -h|--help)
+        echo -e "${BOLD}Ezlmt Dotfiles Bootstrap Installer${NC}"
+        echo
+        echo "Usage: ./install.sh [options]"
+        echo
+        echo "Options:"
+        echo "  -p, --profile <name>   Select profile ('core', 'android-hal')"
+        echo "  --core                 Install universal base profile ('core')"
+        echo "  -y, --non-interactive  Run without interactive prompts"
+        echo "  -h, --help             Show this help message"
+        exit 0
+        ;;
+      *)
+        warn "Unknown option: $1 (ignoring)"
+        shift
+        ;;
+    esac
+  done
+}
+
+resolve_profile() {
+  local recommended
+  recommended="$(detect_recommended_profile)"
+
+  if [ -z "$PROFILE" ]; then
+    if [ "$INTERACTIVE" = true ] && [ -t 0 ]; then
+      echo
+      info "Please select your development environment profile:"
+      echo "  1) core        - Universal base configuration (Personal / Linux / macOS)"
+      echo "  2) android-hal - Google Pixel Camera & Lyric HAL development"
+      echo
+      if [ "$recommended" = "android-hal" ]; then
+        echo -e "  ${YELLOW}* Detected Google workstation environment (Recommended: android-hal)${NC}"
+        read -r -p "Select profile [1/2] (Default: 2 [android-hal]): " choice
+        case "$choice" in
+          1) PROFILE="core" ;;
+          2|"") PROFILE="android-hal" ;;
+          *) PROFILE="$choice" ;;
+        esac
+      else
+        read -r -p "Select profile [1/2] (Default: 1 [core]): " choice
+        case "$choice" in
+          1|"") PROFILE="core" ;;
+          2) PROFILE="android-hal" ;;
+          *) PROFILE="$choice" ;;
+        esac
+      fi
+    else
+      PROFILE="$recommended"
+    fi
+  fi
+}
+
+checkout_dotfiles_branch() {
+  local target_branch="core"
+  if [ "$PROFILE" = "android-hal" ]; then
+    target_branch="profile/android-hal"
+  elif [ "$PROFILE" != "core" ] && [ -n "$PROFILE" ]; then
+    target_branch="profile/${PROFILE}"
+  fi
+
+  info "Switching dotfiles repository to branch: ${BOLD}${target_branch}${NC}..."
+  if git -C "${DOTFILES_DIR}" show-ref --verify --quiet "refs/heads/${target_branch}"; then
+    git -C "${DOTFILES_DIR}" checkout "${target_branch}" 2>/dev/null || true
+  elif git -C "${DOTFILES_DIR}" show-ref --verify --quiet "refs/remotes/origin/${target_branch}"; then
+    git -C "${DOTFILES_DIR}" checkout -b "${target_branch}" "origin/${target_branch}" 2>/dev/null || true
+  else
+    warn "Branch '${target_branch}' not found in dotfiles; keeping current branch ($(git -C "${DOTFILES_DIR}" branch --show-current 2>/dev/null || echo 'current'))."
+  fi
+}
 
 echo -e "${BLUE}${BOLD}"
 cat << "BANNER"
@@ -210,10 +307,10 @@ setup_zsh() {
 }
 
 # ------------------------------------------------------------------------------
-# 3. Link Dotfiles (~/.zshrc, ~/.p10k.zsh)
+# 3. Link Dotfiles (~/.zshrc, ~/.p10k.zsh, bin tools)
 # ------------------------------------------------------------------------------
 link_dotfiles() {
-  info "Linking shell configurations..."
+  info "Linking shell configurations and bin tools..."
 
   backup_and_link() {
     local src="$1"
@@ -222,14 +319,28 @@ link_dotfiles() {
       warn "Backing up existing $dest to ${dest}.bak"
       mv "$dest" "${dest}.bak"
     fi
+    mkdir -p "$(dirname "$dest")"
     ln -sf "$src" "$dest"
     success "Linked $dest -> $src"
   }
+
+  mkdir -p "${DOTFILES_DIR}/profiles" "${HOME}/.local/bin"
 
   backup_and_link "${DOTFILES_DIR}/.zshrc" "${HOME}/.zshrc"
   backup_and_link "${DOTFILES_DIR}/.p10k.zsh" "${HOME}/.p10k.zsh"
   if [ -f "${DOTFILES_DIR}/.gitconfig" ]; then
     backup_and_link "${DOTFILES_DIR}/.gitconfig" "${HOME}/.gitconfig"
+  fi
+
+  # Auto-link all executable scripts in bin/ to ~/.local/bin
+  if [ -d "${DOTFILES_DIR}/bin" ]; then
+    info "Linking helper tools from ${DOTFILES_DIR}/bin to ${HOME}/.local/bin..."
+    for tool in "${DOTFILES_DIR}/bin"/*; do
+      if [ -f "$tool" ]; then
+        chmod +x "$tool" 2>/dev/null || true
+        backup_and_link "$tool" "${HOME}/.local/bin/$(basename "$tool")"
+      fi
+    done
   fi
 }
 
@@ -240,20 +351,42 @@ setup_nvim() {
   info "Setting up Neovim configuration (Ezlmt/nvim)..."
   NVIM_CONFIG_DIR="${HOME}/.config/nvim"
 
+  local target_branch="core"
+  if [ "$PROFILE" = "android-hal" ]; then
+    target_branch="profile/android-hal"
+  elif [ "$PROFILE" != "core" ] && [ -n "$PROFILE" ]; then
+    target_branch="profile/${PROFILE}"
+  fi
+
+  info "Neovim target branch: ${BOLD}${target_branch}${NC}"
+
   if [ -d "${NVIM_CONFIG_DIR}/.git" ]; then
     info "Updating existing nvim config..."
-    git -C "${NVIM_CONFIG_DIR}" checkout work 2>/dev/null || true
+    if git -C "${NVIM_CONFIG_DIR}" show-ref --verify --quiet "refs/heads/${target_branch}"; then
+      git -C "${NVIM_CONFIG_DIR}" checkout "${target_branch}" 2>/dev/null || true
+    elif git -C "${NVIM_CONFIG_DIR}" show-ref --verify --quiet "refs/remotes/origin/${target_branch}"; then
+      git -C "${NVIM_CONFIG_DIR}" checkout -b "${target_branch}" "origin/${target_branch}" 2>/dev/null || true
+    else
+      warn "Branch '${target_branch}' not found in local or remote; attempting fallback to core..."
+      git -C "${NVIM_CONFIG_DIR}" checkout core 2>/dev/null || git -C "${NVIM_CONFIG_DIR}" checkout main 2>/dev/null || true
+    fi
     git -C "${NVIM_CONFIG_DIR}" pull --ff-only || true
   else
     [ -d "${NVIM_CONFIG_DIR}" ] && mv "${NVIM_CONFIG_DIR}" "${NVIM_CONFIG_DIR}.bak"
-    git clone -b work "https://github.com/${GITHUB_USER}/nvim.git" "${NVIM_CONFIG_DIR}"
+    info "Cloning nvim repository (branch: ${target_branch})..."
+    if ! git clone -b "${target_branch}" "https://github.com/${GITHUB_USER}/nvim.git" "${NVIM_CONFIG_DIR}" 2>/dev/null; then
+      warn "Could not clone branch '${target_branch}' directly; cloning default and attempting checkout..."
+      git clone "https://github.com/${GITHUB_USER}/nvim.git" "${NVIM_CONFIG_DIR}"
+      git -C "${NVIM_CONFIG_DIR}" checkout "${target_branch}" 2>/dev/null || \
+      git -C "${NVIM_CONFIG_DIR}" checkout core 2>/dev/null || true
+    fi
   fi
 
   if command -v nvim >/dev/null 2>&1; then
     info "Syncing Neovim Lazy.nvim plugins headless..."
     nvim --headless "+Lazy! sync" +qa || true
   fi
-  success "Neovim configuration ready."
+  success "Neovim configuration ready (branch: $(git -C "${NVIM_CONFIG_DIR}" branch --show-current 2>/dev/null || echo 'default'))."
 }
 
 # ------------------------------------------------------------------------------
@@ -336,6 +469,12 @@ setup_shell() {
 # Main Execution
 # ------------------------------------------------------------------------------
 main() {
+  parse_args "$@"
+  resolve_profile
+
+  info "Active Profile: ${BOLD}${GREEN}${PROFILE}${NC}"
+  checkout_dotfiles_branch
+
   install_packages
   setup_zsh
   link_dotfiles
@@ -347,6 +486,7 @@ main() {
   echo
   echo -e "${GREEN}${BOLD}==============================================================${NC}"
   echo -e "${GREEN}${BOLD}   All Done! Development environment configured successfully!  ${NC}"
+  echo -e "${GREEN}${BOLD}   Profile: ${PROFILE}                                          ${NC}"
   echo -e "${GREEN}${BOLD}==============================================================${NC}"
   echo
   echo "Next steps:"
@@ -357,6 +497,7 @@ main() {
   echo "3. Launch tmux with: tmux"
   echo "4. Launch nvim with: nvim (or alias 'n')"
   echo "5. Launch yazi with: y (or alias 'yazi')"
+  echo "6. View workflow cheatsheet with: cheat (or halhelp)"
 }
 
 main "$@"
