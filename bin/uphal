@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# uphal - Update Lyric Camera HAL APEX on device
+# ==============================================================================
+set -euo pipefail
+
+ANDROID_TOP="${ANDROID_BUILD_TOP:-$HOME/android_workspace}"
+OUT_DIR="${OUT:-$ANDROID_TOP/out/target/product/sasquatch}"
+TARGET_APEX="${OUT_DIR}/vendor/apex/com.google.pixel.camera.hal.apex"
+
+USE_DEBUG=0
+SERIAL=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug|-d)
+      USE_DEBUG=1
+      shift
+      ;;
+    -s)
+      SERIAL="$2"
+      shift 2
+      ;;
+    *)
+      if [[ -z "$SERIAL" ]]; then
+        SERIAL="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ "$USE_DEBUG" -eq 1 ]]; then
+  TARGET_APEX="${OUT_DIR}/vendor/apex/com.google.pixel.camera.hal.debug.apex"
+fi
+
+if [[ ! -f "$TARGET_APEX" ]]; then
+  echo "❌ APEX file not found:"
+  echo "   $TARGET_APEX"
+  echo "💡 Tip: Run 'mlyric' first to build the APEX."
+  exit 1
+fi
+
+ADB_CMD=(adb)
+if [[ -n "$SERIAL" ]]; then
+  ADB_CMD+=( -s "$SERIAL" )
+fi
+
+echo "=========================================="
+echo "📱 Target APEX: $(basename "$TARGET_APEX")"
+echo "📂 Location   : $TARGET_APEX"
+if [[ -n "$SERIAL" ]]; then
+  echo "🎯 Device     : $SERIAL"
+fi
+echo "=========================================="
+
+echo "🚀 Installing APEX to device..."
+"${ADB_CMD[@]}" install --apex --force-non-staged "$TARGET_APEX"
+
+echo "🔄 Restarting camera service..."
+if "${ADB_CMD[@]}" root >/dev/null 2>&1; then
+  "${ADB_CMD[@]}" wait-for-device
+  "${ADB_CMD[@]}" shell pkill -f camera || true
+else
+  "${ADB_CMD[@]}" shell "su 0 pkill -f camera || pkill -f camera || true"
+fi
+
+echo "✅ Lyric HAL updated successfully!"
