@@ -3,6 +3,7 @@ import os
 import sys
 import shutil
 import subprocess
+import unicodedata
 
 _SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 _LOCAL_CANDIDATE = os.path.normpath(os.path.join(_SCRIPT_DIR, "..", "CHEATSHEET.md"))
@@ -199,28 +200,36 @@ DATA = [
     },
 ]
 
+def display_width(text):
+    return sum(2 if unicodedata.east_asian_width(c) in ('W', 'F', 'A') else 1 for c in text)
+
 def get_term_width():
     w = shutil.get_terminal_size((80, 24)).columns
-    return min(max(w, 75), 110)
+    return max(min(w - 2, 100), 45)
 
 def format_header(title, subtitle=None):
     width = get_term_width()
-    line = "─" * (width - 2)
+    vis_w = display_width(title)
+    dashes = max(2, width - vis_w - 6)
     res = [
-        f"{CYAN}{BOLD}┌{line}┐{RESET}",
-        f"{CYAN}{BOLD}│{RESET} {BOLD}{title}{RESET}".ljust(width + 12) + f"{CYAN}{BOLD}│{RESET}"
+        f"{CYAN}{BOLD}┌── {title} {RESET}{CYAN}{'─' * dashes}┐{RESET}",
     ]
     if subtitle:
-        res.append(f"{CYAN}{BOLD}│{RESET} {DIM}{subtitle}{RESET}".ljust(width + 12) + f"{CYAN}{BOLD}│{RESET}")
-    res.append(f"{CYAN}{BOLD}└{line}┘{RESET}")
+        res.append(f"{DIM}   {subtitle}{RESET}")
+    res.append(f"{CYAN}└──{'─' * max(2, width - 4)}┘{RESET}")
     return "\n".join(res)
 
 def render_category(cat):
     output = []
     output.append(f"{YELLOW}{BOLD}{cat['title']}{RESET}")
     output.append(f"{DIM}   {cat['desc']}{RESET}")
-    cmd_col_width = 22
-    desc_col_width = 33
+    w = get_term_width()
+    if w <= 80:
+        cmd_col_width = 16
+        desc_col_width = 26
+    else:
+        cmd_col_width = 22
+        desc_col_width = 33
     for cmd, desc, note in cat["items"]:
         cmd_styled = f"{GREEN}{BOLD}{cmd.ljust(cmd_col_width)}{RESET}"
         desc_styled = f"{WHITE}{desc.ljust(desc_col_width)}{RESET}"
@@ -310,18 +319,123 @@ def run_fzf_interactive():
             capture_output=True
         )
         if res.returncode == 0 and res.stdout.strip():
-            selected = res.stdout.strip().split("	")
+            selected = res.stdout.strip().split("\t")
             cmd = selected[1]
             desc = selected[2]
             note = selected[3]
-            print(f"{GREEN}{BOLD}已选定命令: {cmd}{RESET}")
-            print(f"{WHITE}说明: {desc}{RESET} ({DIM}{note}{RESET})")
-            print(f"{CYAN}可以直接复制或在终端中运行。{RESET}")
+
+            # Copy to tmux buffer if tmux is active
+            if os.environ.get("TMUX") and shutil.which("tmux"):
+                subprocess.run(["tmux", "set-buffer", cmd], stderr=subprocess.DEVNULL)
+                print(f"\n{GREEN}{BOLD}✅ 已选定命令: {cmd}{RESET}")
+                print(f"   {WHITE}说明: {desc}{RESET} ({DIM}{note}{RESET})")
+                print(f"   {CYAN}💡 已自动复制到 Tmux 剪贴板 (按 <prefix> ] 即可直接粘贴){RESET}\n")
+            else:
+                print(f"\n{GREEN}{BOLD}✅ 已选定命令: {cmd}{RESET}")
+                print(f"   {WHITE}说明: {desc}{RESET} ({DIM}{note}{RESET})\n")
+
+            if os.environ.get("CHEAT_IN_PANE") == "1":
+                try:
+                    input(f"{DIM}按 Enter 或 Ctrl+C 关闭此面板...{RESET}")
+                except (EOFError, KeyboardInterrupt):
+                    pass
     except Exception as e:
         print(f"{YELLOW}交互模式异常: {e}{RESET}")
 
+def should_spawn_tmux_pane(args):
+    # Must be running inside tmux
+    if not os.environ.get("TMUX") or not shutil.which("tmux"):
+        return False
+    # Must not already be inside the spawned pane
+    if os.environ.get("CHEAT_IN_PANE") == "1":
+        return False
+    # Must be interactive terminal
+    if not sys.stdout.isatty():
+        return False
+    # Respect explicit inline execution flags
+    if any(flag in args for flag in ("--inline", "--here", "-H", "--no-split")):
+        return False
+    # Raw output should be inline
+    if any(flag in args for flag in ("--raw", "-r")):
+        return False
+    return True
+
+def close_existing_cheat_pane():
+    try:
+        out = subprocess.check_output(
+            ["tmux", "list-panes", "-F", "#{pane_id} #{@cheat_pane}"],
+            text=True,
+            stderr=subprocess.DEVNULL
+        )
+        for line in out.strip().splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1] == "1":
+                subprocess.run(["tmux", "kill-pane", "-t", parts[0]], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+def get_tmux_pane_width():
+    width_env = os.environ.get("CHEAT_PANE_WIDTH")
+    if width_env:
+        return width_env
+    try:
+        out = subprocess.check_output(
+            ["tmux", "display-message", "-p", "#{window_width}"],
+            text=True,
+            stderr=subprocess.DEVNULL
+        ).strip()
+        win_w = int(out)
+        if win_w >= 180:
+            return "85"
+        elif win_w >= 140:
+            return "46%"
+        else:
+            return "50%"
+    except Exception:
+        return "45%"
+
+def spawn_tmux_pane(args):
+    close_existing_cheat_pane()
+    width = get_tmux_pane_width()
+    python_bin = sys.executable
+    script_path = os.path.realpath(__file__)
+
+    filtered_args = [a for a in args if a not in ("--inline", "--here", "-H", "--no-split")]
+    split_cmd = [
+        "tmux", "split-window",
+        "-fh",
+        "-l", width,
+        "-e", "CHEAT_IN_PANE=1",
+        "-P", "-F", "#{pane_id}",
+        python_bin, script_path
+    ] + filtered_args
+
+    try:
+        pane_id = subprocess.check_output(split_cmd, text=True).strip()
+        if pane_id:
+            subprocess.run(
+                ["tmux", "set-option", "-p", "-t", pane_id, "@cheat_pane", "1"],
+                stderr=subprocess.DEVNULL
+            )
+            subprocess.run(
+                ["tmux", "select-pane", "-t", pane_id, "-T", "CheatSheet"],
+                stderr=subprocess.DEVNULL
+            )
+        return 0
+    except Exception:
+        return None
+
 def main():
     args = sys.argv[1:]
+
+    # When in tmux, spawn a sidebar pane on the far right
+    if should_spawn_tmux_pane(args):
+        ret = spawn_tmux_pane(args)
+        if ret == 0:
+            sys.exit(0)
+
+    # Clean inline flags
+    args = [a for a in args if a not in ("--inline", "--here", "-H", "--no-split")]
 
     # Check raw output flag
     raw = False
