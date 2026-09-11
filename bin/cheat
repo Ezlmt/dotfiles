@@ -1,0 +1,433 @@
+#!/usr/bin/env python3
+import os
+import sys
+import shutil
+import subprocess
+
+_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+_LOCAL_CANDIDATE = os.path.normpath(os.path.join(_SCRIPT_DIR, "..", "CHEATSHEET.md"))
+if os.path.isfile(_LOCAL_CANDIDATE):
+    CHEATSHEET_PATH = _LOCAL_CANDIDATE
+else:
+    CHEATSHEET_PATH = os.path.expanduser("~/.dotfiles/CHEATSHEET.md")
+
+# ANSI Colors
+BOLD = "[1m"
+DIM = "[2m"
+CYAN = "[36m"
+GREEN = "[32m"
+YELLOW = "[33m"
+BLUE = "[34m"
+MAGENTA = "[35m"
+WHITE = "[37m"
+RESET = "[0m"
+
+DATA = [
+    {
+        "id": "hal",
+        "aliases": ["hal", "android", "lyric", "camera", "cam"],
+        "title": "📸 Lyric Camera HAL 日常开发核心流 (Mentor 工作流)",
+        "badge": "HAL / Android",
+        "desc": "Mentor 专属工作流：编译、推机、重启、日志与目录直达",
+        "items": [
+            ("bhal", "改完代码一键「编译+推机+重启」 (build/push)", "最强日常连招，自动 RBE 编译并装机生效"),
+            ("mlyric", "在任意目录下编译 HAL APEX (compile/build)", "未 lunch 自动补齐 lunch；支持 'mlyric debug'"),
+            ("mlyric debug", "编译带 Debug 符号的 HAL APEX", "生成包含调试符号的 APEX 产物"),
+            ("uphal", "推送 APEX 到手机并重启相机 (push/install)", "自动容错 $OUT，带 wait-for-device 保护"),
+            ("uphal -s <sn>", "多手机连接时指定目标设备", "传参指定特定真机序列号"),
+            ("alunch", "一键加载 RBE + Sasquatch Lunch", "任意目录均可执行，完成后保留原目录"),
+            ("camlog", "实时查看真机相机 Logcat 日志 (camera log)", "自动过滤 LyricCameraHAL/CameraProvider 等"),
+            ("chal", "直达 LyricCameraHAL 源码目录", "cd $ANDROID_BUILD_TOP/.../LyricCameraHAL/src"),
+            ("ctop", "直达 Android 工程根目录", "cd $ANDROID_BUILD_TOP (~/android_workspace)"),
+            ("cout", "直达当前 Target 编译产物目录", "cd $OUT (.../out/target/product/sasquatch)"),
+            ("mcompdb", "生成/更新 Clangd 编译数据库 (LSP)", "自动生成 compile_commands.json，消灭虚假红线与报错"),
+        ],
+    },
+    {
+        "id": "yazi",
+        "aliases": ["yazi", "ya"],
+        "title": "🗂️ Yazi 现代终端文件管理器 (你的配置 + 通用核心)",
+        "badge": "Yazi 文件管理",
+        "desc": "Rust 极速异步 Miller 三列文件管理器，已深度定制 Neovim 与 Zoxide",
+        "items": [
+            ("y", "启动 Yazi 并集成目录同步", "【你的环境】退出时自动 cd 进入当前浏览目录"),
+            ("l", "smart-enter (智能进入/编辑)", "【你的配置】命中目录进入，命中文件直接用 nvim 打开"),
+            ("T h", "隐藏/折叠右侧预览窗口 (hide preview)", "【你的配置】toggle-pane min-preview，长文件名浏览拉满"),
+            ("T m", "最大化右侧代码/文档预览 (max preview)", "【你的配置】toggle-pane max-preview，沉浸式阅读代码"),
+            ("z", "Yazi 内呼出 zoxide 跳转", "【你的配置】在文件管理器内输入目录别名秒级瞬移"),
+            ("Z", "Yazi 内呼出 fzf 模糊跳转", "【你的配置】极速定位当前树下的目标文件/目录"),
+            ("~", "呼出 Yazi 内置按键全量手册", "【通用核心】任何时候按 ~ 查看 Yazi 官方自带键位备忘"),
+            ("h / j / k / l", "左(上层) / 下 / 上 / 右(进入)", "【通用核心】经典 Vim 导航手感"),
+            ("gg / G", "快速跳至列表顶部 / 底部", "【通用核心】极速首尾跳跃"),
+            ("Ctrl + u / d", "向上 / 向下翻半屏", "【通用核心】快速长列表翻滚"),
+            (".", "切换显示/隐藏隐藏文件", "【通用核心】快速查看或隐藏 dotfiles"),
+            ("a", "新建文件或子目录", "【通用核心】输入 foo.txt 建文件，输入 foo/ 建文件夹"),
+            ("r / R", "重命名 / 批量重命名 (nvim)", "【通用核心】R 会呼出 nvim 打开清单，保存批量生效"),
+            ("y / x / p", "复制 / 剪切 / 粘贴选中文档", "【通用核心】Yank / Cut / Paste 文件操作"),
+            ("d / D", "移至回收站 / 永久删除", "【通用核心】Trash (安全) / Permanent Delete"),
+            ("Space", "多选文件 (标记并移到下一项)", "【通用核心】按空格连续勾选多个分散文件"),
+            ("v / V", "进入 / 取消 Visual 连续选择", "【通用核心】类似 Vim Visual 模式划选连续区块"),
+            ("Ctrl + a / r", "全选所有文件 / 反选文件", "【通用核心】一键选中或反转选区"),
+            ("/", "当前目录下实时按名过滤", "【通用核心】即时过滤高亮，按 Esc 退出过滤模式"),
+            ("s / S", "ripgrep 内容搜索 / fd 文件搜索", "【通用核心】跨目录深度找代码或找文件名"),
+            ("t / 1..9 / w", "新建标签 / 切换 / 关闭标签", "【通用核心】类似浏览器多 Tab 并发浏览多目录"),
+            ("c c / c d", "复制绝对路径 / 复制所在目录", "【通用核心】当前文件或父路径复制到系统剪贴板"),
+            ("q / Q", "退出并 cd / 仅退出不跳转", "【通用核心】q 联动 zsh 自动跟随当前目录"),
+        ],
+    },
+    {
+        "id": "nvim",
+        "aliases": ["nvim", "vim", "neovim"],
+        "title": "⚡ Neovim 现代化编辑器 (基于你的配置 Snacks + WhichKey)",
+        "badge": "Neovim 编辑器",
+        "desc": "以 <Space> 为 Leader，集成 Snacks Picker、LSP、Lazygit、Which-Key",
+        "items": [
+            ("<leader>", "Space (空格键)", "【核心前缀】所有高级功能的引导前缀"),
+            ("<leader><space>", "Smart Find Files 智能检索", "【Snacks】优先匹配当前项目文件及近期打开"),
+            ("<leader>ff", "Find Files 搜索工程文件", "【Snacks】当前项目全量文件模糊检索"),
+            ("<leader>/ 或 sg", "Live Grep 全局内容搜索", "【Snacks】基于 ripgrep 全工程秒搜字符串"),
+            ("<leader>, 或 fb", "Buffers 缓冲区列表", "【Snacks】查看并快速切换已打开的文件 Tab"),
+            ("<leader>e", "File Explorer 侧边栏文件树", "【Snacks】展开/收起 Neovim 内置目录树"),
+            ("<leader>gs", "Git Status 变动状态", "【Snacks】直观查看修改、已暂存、未跟踪文件"),
+            ("<leader>gg", "Lazygit 浮窗一键呼出", "【Snacks】在编辑器内部全屏操作 Git TUI"),
+            ("<leader>z", "Toggle Zen Mode 专注模式", "【Snacks】隐藏多余边栏与杂音，代码居中沉浸编辑"),
+            ("<leader>cR", "Rename File 文件重命名", "【Snacks】智能重命名当前文件并同步修改磁盘路径"),
+            ("<Ctrl-/>", "Toggle Terminal 浮动终端", "【Snacks】随时调出/收起底部悬浮终端命令行"),
+            ("jk", "插入模式秒切回 Normal 模式", "【你的键位】再也不需要把手移到键盘左上角按 Esc"),
+            ("<C-h/j/k/l>", "无缝跨窗口/跨 Tmux 穿梭", "【你的键位】与 tmux-navigator 深度联动，丝滑平移"),
+            ("<S-H> / <S-L>", "极速跳至行首 (^) / 行尾 ($)", "【你的键位】极快的光标水平跳跃"),
+            ("gd / gr / gI", "跳转定义 / 查看引用 / 实现", "【LSP】代码智能导航核心三连，极速溯源"),
+            ("<leader>ss / sS", "本文件符号 / 工作区全局符号", "【LSP】快速检索函数、类、结构体大纲"),
+            ("Space (等0.5s)", "呼出 Which-Key 交互提示菜单", "【神技】忘记按键时直接按空格等待弹层，自动提示下级按键"),
+            ("<leader>?", "查看当前 Buffer 局部按键映射", "【Which-Key】快速检查当前模式下的可用按键"),
+        ],
+    },
+    {
+        "id": "tmux",
+        "aliases": ["tmux", "tmx2", "tm"],
+        "title": "🪟 Tmux / tmx2 终端复用器 (基于你的 ~/.config/tmux/tmux.conf)",
+        "badge": "Tmux 复用器",
+        "desc": "前缀键已重映射为 Ctrl+Space，针对 Vim 用户优化定向分屏与跳转",
+        "items": [
+            ("Prefix", "Ctrl + Space (注意不是 Ctrl+b!)", "【核心前缀】你已将默认前缀修改为 Ctrl+Space"),
+            ("tm [session]", "启动或附加会话 (默认 main)", "【你的别名】网络断线或关终端后台任务绝不丢失"),
+            ("tls", "列出所有已存在会话", "【你的别名】对应 tmx2 ls"),
+            ("Alt + s", "新建 Session 会话", "【免前缀】直接按下 Alt+s 开新独立会话"),
+            ("Prefix + S", "关闭当前 Session", "【防误杀】弹出二次确认提示，确认后关闭"),
+            ("Prefix + d", "Detach 挂起当前会话", "【挂起】回到外部主 shell，后台保持运行"),
+            ("Alt + w", "新建 Window 窗口 (保留路径)", "【免前缀】在当前目录打开一个全新 Tab 窗口"),
+            ("Alt + 1..9", "秒切第 1~9 个窗口", "【免前缀】极速直达指定窗口，无需前后翻页"),
+            ("Alt + i/j/k/l", "切换上/左/下/右 面板 (Pane)", "【免前缀】Vim 方向手感无缝切分屏"),
+            ("Ctrl + h/j/k/l", "Vim-Tmux 跨界自由穿梭", "【免前缀】在 Neovim 与 Tmux 分屏间平滑移动"),
+            ("Prefix + i/k/j/l", "向上/下/左/右 切分新面板 (split)", "【方向切分】在当前所在方向直接分裂新 Pane"),
+            ("Alt + o", "关闭除当前外的所有 Pane", "【免前缀】聚焦模式，只保留当前活跃面板"),
+            ("Alt + b", "将当前 Pane 拆分成新 Window", "【免前缀】把当前小分屏独立提拔成新窗口"),
+            ("Alt + Shift + I/J/K/L", "微调面板大小 (步长 5)", "【免前缀】向对应方向放大/缩小分屏"),
+            ("Prefix + [", "进入 Vi 复制/翻页模式", "【复制模式】自由滚动历史滚屏，按 Escape 退出"),
+            ("v / C-v / y", "开始选区 / 块选 / 复制退出", "【Vi Mode】选中后按 y 自动同步至剪贴板"),
+            ("Prefix + r", "重载 tmux 配置", "【热更新】重新加载 ~/.config/tmux/tmux.conf"),
+        ],
+    },
+    {
+        "id": "lg",
+        "aliases": ["lg", "lazygit", "lazy"],
+        "title": "🐙 Lazygit 现代终端 Git TUI 神器 (极简操作指南)",
+        "badge": "Lazygit",
+        "desc": "终端最强交互式 Git 客户端，支持数字切面板、行级暂存、交互式 Rebase",
+        "items": [
+            ("lg", "启动 Lazygit 终端客户端", "alias 对应 lazygit；外部独立运行"),
+            ("<leader>gg", "Neovim 内弹窗呼出 Lazygit", "【Snacks】编辑器内按空格+gg即刻弹出"),
+            ("?", "呼出当前面板专属快捷键菜单", "【最强神技】任何时候按问号查看当前面板所有键位"),
+            ("1 / 2 / 3 / 4 / 5", "秒切面板 (Status/Files/Branches/Commits/Stash)", "数字键直达左侧 5 大核心控制面板"),
+            ("h / l", "在左侧面板与右侧 Diff 视图间切换", "类似 Vim 左右穿梭"),
+            ("j / k 或 ↑ / ↓", "在列表中上下移动光标", "标准 Vim 移动手感"),
+            ("Space (在Files)", "暂存 / 取消暂存单个文件", "Stage / Unstage 单个文件改动"),
+            ("a (在Files)", "全部暂存 / 取消全部暂存", "Stage / Unstage All"),
+            ("c (在Files)", "提交改动 (弹出 Commit 窗口)", "打完 Commit Message 后回车即生效"),
+            ("C (在Files)", "使用 Neovim 撰写详细 Commit", "调用 $EDITOR 撰写长篇格式化提交说明"),
+            ("A (在Files)", "追加到最近一次提交 (Amend)", "git commit --amend 快捷操作"),
+            ("d (在Files)", "放弃当前文件修改 (Discard)", "丢弃未暂存代码，带二次确认防误删"),
+            ("s (在Files)", "Stash 全部暂存修改", "将当前所有改动存入暂存栈"),
+            ("Enter (在Files)", "深入文件查看 Diff 并按行暂存", "进入行级细粒度暂存 (Line Staging) 模式"),
+            ("Space (在Diff中)", "暂存当前行 / 当前代码块 (Hunk)", "只提交文件中某一部分代码的神器"),
+            ("v (在Diff中)", "开启 Visual 选区进行多行暂存", "自由圈选连续几行进行精确 stage"),
+            ("Esc", "返回上层 / 退出 Diff 视图", "退出当前弹窗或深入模式"),
+            ("Space (在Branches)", "检出选中分支 (Checkout)", "秒切到选中分支"),
+            ("n (在Branches)", "基于当前状态创建新分支", "New branch 快速开新分支"),
+            ("M (在Branches)", "将选中分支合并入当前分支", "Merge into current branch"),
+            ("r (在Branches)", "将当前分支变基到选中分支", "git rebase <selected_branch>"),
+            ("d (在Branches)", "删除选中本地分支", "Delete local branch (带确认)"),
+            ("P / p", "推送到远程 (Push) / 拉取 (Pull)", "大写 P 推送，小写 p 拉取更新"),
+            ("s / f (在Commits)", "合并 (Squash) / 修正 (Fixup) 提交", "交互式 Rebase 极速操作，秒理清历史"),
+            ("r (在Commits)", "修改选中的历史提交信息", "Reword commit message"),
+            ("d (在Commits)", "丢弃/删除选中历史提交", "Drop commit (交互式删除错误提交)"),
+            ("q", "退出 Lazygit", "干净退出回到外部终端或 Neovim"),
+        ],
+    },
+    {
+        "id": "git",
+        "aliases": ["git", "repo", "vcs", "piper", "citc"],
+        "title": "🔄 代码同步与版本管理 (Repo & Git & Piper/CitC)",
+        "badge": "Repo / Git",
+        "desc": "Android 多仓 Repo 管理、Mentor 推荐同步策略与 Google CitC/Piper 工具",
+        "items": [
+            ("rsync-hal", "仅同步 LyricCameraHAL 仓库", "【日常推荐】秒级快速同步当前模块代码"),
+            ("rsync-all", "全量 32 线程同步整树", "对应 Mentor 推荐：repo sync -c -j32"),
+            ("rst", "查看当前工作区变动状态", "alias 对应 repo status"),
+            ("rdiff", "查看当前代码修改 diff", "alias 对应 repo diff"),
+            ("rinit-lyric", "打印 Mentor 推荐初始化命令", "防忘备忘：包含 superproject & partial-clone"),
+            ("lg", "启动 lazygit 终端 TUI", "极简 Git 可视化：快速 stage、commit、看树"),
+            ("fig", "Google CitC / Piper 命令入口", "alias 对应 hg"),
+            ("mycls", "查看本人名下的 Changelist 列表", "alias 对应 hg mycls"),
+        ],
+    },
+    {
+        "id": "shell",
+        "aliases": ["shell", "zsh", "tools", "fzf"],
+        "title": "🐚 终端生产力与智能检索 (Shell, FZF, Zoxide)",
+        "badge": "Shell / FZF",
+        "desc": "Zsh 高级补全、FZF 模糊检索与目录瞬移体系",
+        "items": [
+            ("y", "启动 yazi 现代文件管理器", "退出时自动 cd 进入当前浏览的目录"),
+            ("z <dir>", "zoxide 智能跨目录秒切", "基于历史权重，如 'z Lyric' 直接跳转"),
+            ("Ctrl + T", "FZF 极速模糊搜索文件", "底层已绑 fd，自动跳过 .git，结果即刻上屏"),
+            ("Alt + C", "FZF 极速模糊搜索并进入目录", "底层已绑 fd，快速定位并 cd 到子目录"),
+            ("Ctrl + R", "FZF 历史命令模糊搜索", "交互式搜索历史执行过的指令"),
+            ("jsk", "打开 Jetski CLI 编程助手", "命令行直接调起 Google Jetski Agent"),
+            ("cheat -i", "启动交互式全量命令检索", "基于 fzf 实时搜索本系统所有快捷命令"),
+        ],
+    },
+]
+
+def get_term_width():
+    w = shutil.get_terminal_size((80, 24)).columns
+    return min(max(w, 75), 110)
+
+def format_header(title, subtitle=None):
+    width = get_term_width()
+    line = "─" * (width - 2)
+    res = [
+        f"{CYAN}{BOLD}┌{line}┐{RESET}",
+        f"{CYAN}{BOLD}│{RESET} {BOLD}{title}{RESET}".ljust(width + 12) + f"{CYAN}{BOLD}│{RESET}"
+    ]
+    if subtitle:
+        res.append(f"{CYAN}{BOLD}│{RESET} {DIM}{subtitle}{RESET}".ljust(width + 12) + f"{CYAN}{BOLD}│{RESET}")
+    res.append(f"{CYAN}{BOLD}└{line}┘{RESET}")
+    return "\n".join(res)
+
+def render_category(cat):
+    output = []
+    output.append(f"{YELLOW}{BOLD}{cat['title']}{RESET}")
+    output.append(f"{DIM}   {cat['desc']}{RESET}")
+    cmd_col_width = 22
+    desc_col_width = 33
+    for cmd, desc, note in cat["items"]:
+        cmd_styled = f"{GREEN}{BOLD}{cmd.ljust(cmd_col_width)}{RESET}"
+        desc_styled = f"{WHITE}{desc.ljust(desc_col_width)}{RESET}"
+        note_styled = f"{DIM}# {note}{RESET}"
+        output.append(f"  {cmd_styled} {desc_styled} {note_styled}")
+    output.append("")
+    return "\n".join(output)
+
+def render_dashboard():
+    lines = []
+    lines.append(format_header("🛠️  全能开发者工作流速查手册 (Cheatsheet Dashboard)", 
+                               "输入 'cheat <分类名>' 精准查看，或 'cheat -i' 交互检索"))
+    lines.append("")
+    lines.append(f"{BOLD}{WHITE}📂 可用速查分类 (输入命令直达对应版块)：{RESET}")
+    lines.append("")
+    for cat in DATA:
+        badge = f"{CYAN}{BOLD}[cheat {cat['id']}]{RESET}".ljust(22)
+        title = f"{YELLOW}{BOLD}{cat['title'].split()[0]} {cat['title'].split()[1]}{RESET}".ljust(35)
+        count = f"{DIM}({len(cat['items'])} 条指令){RESET}"
+        desc = f"{WHITE}{cat['desc']}{RESET}"
+        lines.append(f"  {badge} {title} {count}")
+        lines.append(f"     {DIM}└─ {desc}{RESET}")
+        lines.append("")
+
+    lines.append(f"{MAGENTA}{BOLD}⚡ 精选高频核心连招 (Quick Highlights)：{RESET}")
+    highlights = [
+        ("bhal", "Lyric HAL 代码改完一键「编译+推机+重启相机」", "日常真机调试最强命令"),
+        ("camlog", "实时抓取真机相机核心服务 Logcat 日志", "另一终端窗口常驻查看"),
+        ("y (yazi)", "终端文件管理器；按 'l' 进目录/开nvim，按 'T h' 折叠预览", "退出自动 cd 当前目录"),
+        ("nvim: <leader><space>", "智能文件搜索；<leader>/ 全局搜索；Space 等候呼出 WhichKey", "Snacks + WhichKey"),
+        ("tmux: Ctrl+Space", "专属 Prefix 键；Alt+i/j/k/l 切分屏；Alt+w 开新窗口", "已深度绑定 ~/.config/tmux"),
+        ("rsync-hal", "秒级同步 LyricCameraHAL 单一模块，免去整树同步等待", "Mentor 工作流推荐"),
+        ("cheat -i", "启动 FZF 交互式按键搜索器，支持实时打字过滤命令", "交互式全量搜索"),
+    ]
+    for cmd, desc, note in highlights:
+        cmd_styled = f"{GREEN}{BOLD}{cmd.ljust(24)}{RESET}"
+        desc_styled = f"{WHITE}{desc.ljust(44)}{RESET}"
+        note_styled = f"{DIM}# {note}{RESET}"
+        lines.append(f"  {cmd_styled} {desc_styled} {note_styled}")
+    lines.append("")
+    lines.append(f"{BLUE}{BOLD}💡 操作提示：{RESET}上下翻动: {GREEN}j/k{RESET} 或 {GREEN}↑/↓{RESET} | 退出: {GREEN}q{RESET} | 搜索: {GREEN}/{RESET} | Neovim打开: {GREEN}cheat -v{RESET}")
+    return "\n".join(lines)
+
+def display_page(text, raw=False):
+    # If explicitly requested raw output, or stdout is piped, or running in agent test runner
+    if raw or not sys.stdout.isatty() or os.environ.get("PAGER") == "cat":
+        print(text)
+        return
+
+    # Check if less is available
+    if shutil.which("less"):
+        prompt = " 📖 速查手册 (Cheatsheet) [j/k 或 ↑/↓ 上下翻动 | / 搜索 | q 退出]"
+        cmd = ["less", "-R", "-i", "-s", "-P", prompt]
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, text=True)
+            p.communicate(input=text)
+            return
+        except Exception:
+            pass
+
+    print(text)
+
+def run_fzf_interactive():
+    if not shutil.which("fzf"):
+        print(f"{YELLOW}未找到 fzf，回退到普通文本展示。{RESET}")
+        render_dashboard()
+        return
+
+    lines = []
+    for cat in DATA:
+        for cmd, desc, note in cat["items"]:
+            # Format: Category | Command | Description | Note
+            lines.append(f"[{cat['badge']}]	{cmd}	{desc}	{note}")
+
+    fzf_input = "\n".join(lines)
+    try:
+        preview_cmd = 'echo "分类: {1}\n命令: \033[1;32m{2}\033[0m\n说明: \033[1m{3}\033[0m\n详细: {4}"'
+        res = subprocess.run(
+            ["fzf", "--ansi", "--delimiter=	", 
+             "--with-nth=1,2,3", 
+             "--preview", preview_cmd,
+             "--preview-window=down:4:wrap",
+             "--header=回车选择命令 (ESC 退出)",
+             "--prompt=🔍 Cheat > "],
+            input=fzf_input,
+            text=True,
+            capture_output=True
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            selected = res.stdout.strip().split("	")
+            cmd = selected[1]
+            desc = selected[2]
+            note = selected[3]
+            print(f"{GREEN}{BOLD}已选定命令: {cmd}{RESET}")
+            print(f"{WHITE}说明: {desc}{RESET} ({DIM}{note}{RESET})")
+            print(f"{CYAN}可以直接复制或在终端中运行。{RESET}")
+    except Exception as e:
+        print(f"{YELLOW}交互模式异常: {e}{RESET}")
+
+def main():
+    args = sys.argv[1:]
+
+    # Check raw output flag
+    raw = False
+    if "--raw" in args:
+        raw = True
+        args.remove("--raw")
+    elif "-r" in args:
+        raw = True
+        args.remove("-r")
+
+    # Edit option in Neovim (writable)
+    if args and args[0] in ("-e", "--edit", "edit"):
+        editor = os.environ.get("EDITOR", "nvim")
+        os.execvp(editor, [editor, CHEATSHEET_PATH])
+
+    # Neovim Read-only View mode (with q mapped to :q<CR>)
+    if args and args[0] in ("-v", "--view", "view"):
+        target_category = args[1].lower() if len(args) > 1 else None
+        jump_arg = []
+        if target_category:
+            heading_map = {
+                "hal": "1. .*Lyric Camera HAL",
+                "android": "1. .*Lyric Camera HAL",
+                "lyric": "1. .*Lyric Camera HAL",
+                "yazi": "2. .*Yazi",
+                "ya": "2. .*Yazi",
+                "nvim": "3. .*Neovim",
+                "vim": "3. .*Neovim",
+                "tmux": "4. .*Tmux",
+                "lg": "5. .*Lazygit",
+                "lazygit": "5. .*Lazygit",
+                "git": "6. .*代码同步与版本管理",
+                "repo": "6. .*代码同步与版本管理",
+                "shell": "7. .*终端生产力与智能检索",
+                "tools": "8. .*市面优秀命令提示",
+            }
+            pat = heading_map.get(target_category)
+            if pat:
+                jump_arg = ["-c", f"silent! /{pat}", "-c", "nohlsearch"]
+
+        nvim_cmd = ["nvim", "-R", "-M", "-c", "nnoremap q :q<CR>"] + jump_arg + [CHEATSHEET_PATH]
+        os.execvp("nvim", nvim_cmd)
+
+    # FZF Interactive mode
+    if args and args[0] in ("-i", "--interactive", "fzf"):
+        run_fzf_interactive()
+        return
+
+    # No argument: Show Dashboard
+    if not args:
+        display_page(render_dashboard(), raw=raw)
+        return
+
+    query = args[0].lower()
+
+    # Special case: all
+    if query == "all":
+        parts = [format_header("🛠️  全量开发者工作流速查手册 (All Categories)"), ""]
+        for cat in DATA:
+            parts.append(render_category(cat))
+        display_page("\n".join(parts), raw=raw)
+        return
+
+    # Check for direct category match
+    matched_cat = None
+    for cat in DATA:
+        if query == cat["id"] or query in cat["aliases"]:
+            matched_cat = cat
+            break
+
+    if matched_cat:
+        header = format_header(f"{matched_cat['title']}", f"分类直达速查 ─ 输入 'cheat' 返回仪表盘")
+        body = render_category(matched_cat)
+        display_page(f"{header}\n\n{body}", raw=raw)
+        return
+
+    # Otherwise: keyword search across all categories
+    full_query = " ".join(args).lower()
+    matches = []
+    for cat in DATA:
+        cat_matches = []
+        for cmd, desc, note in cat["items"]:
+            if full_query in (cmd + desc + note).lower():
+                cat_matches.append((cmd, desc, note))
+        if cat_matches:
+            matches.append((cat, cat_matches))
+
+    if matches:
+        parts = [format_header(f"🔍 搜索结果: '{full_query}'", f"共找到 {sum(len(m[1]) for m in matches)} 条匹配"), ""]
+        for cat, items in matches:
+            parts.append(f"{YELLOW}{BOLD}{cat['title']}{RESET}")
+            cmd_col_width = 22
+            desc_col_width = 33
+            for cmd, desc, note in items:
+                cmd_styled = f"{GREEN}{BOLD}{cmd.ljust(cmd_col_width)}{RESET}"
+                desc_styled = f"{WHITE}{desc.ljust(desc_col_width)}{RESET}"
+                note_styled = f"{DIM}# {note}{RESET}"
+                parts.append(f"  {cmd_styled} {desc_styled} {note_styled}")
+            parts.append("")
+        display_page("\n".join(parts), raw=raw)
+    else:
+        err = [
+            f"{YELLOW}⚠️ 未找到与 '{full_query}' 匹配的快捷命令。{RESET}",
+            f"输入 {GREEN}cheat{RESET} 查看分类索引，或输入 {GREEN}cheat -i{RESET} 启动模糊检索。"
+        ]
+        display_page("\n".join(err), raw=raw)
+
+if __name__ == "__main__":
+    main()
