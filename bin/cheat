@@ -286,11 +286,13 @@ def display_page(text, raw=False):
         try:
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, text=True)
             p.communicate(input=text)
+            cleanup_and_exit(0)
             return
         except Exception:
             pass
 
     print(text)
+    cleanup_and_exit(0)
 
 def run_fzf_interactive():
     if not shutil.which("fzf"):
@@ -339,21 +341,25 @@ def run_fzf_interactive():
                     input(f"{DIM}按 Enter 或 Ctrl+C 关闭此面板...{RESET}")
                 except (EOFError, KeyboardInterrupt):
                     pass
+                cleanup_and_exit(0)
+        else:
+            if os.environ.get("CHEAT_IN_PANE") == "1":
+                cleanup_and_exit(0)
     except Exception as e:
         print(f"{YELLOW}交互模式异常: {e}{RESET}")
 
-def should_spawn_tmux_pane(args):
+def should_spawn_tmux(args):
     # Must be running inside tmux
     if not os.environ.get("TMUX") or not shutil.which("tmux"):
         return False
-    # Must not already be inside the spawned pane
+    # Must not already be inside the spawned pane/popup
     if os.environ.get("CHEAT_IN_PANE") == "1":
         return False
     # Must be interactive terminal
     if not sys.stdout.isatty():
         return False
     # Respect explicit inline execution flags
-    if any(flag in args for flag in ("--inline", "--here", "-H", "--no-split")):
+    if any(flag in args for flag in ("--inline", "--here", "-H")):
         return False
     # Raw output should be inline
     if any(flag in args for flag in ("--raw", "-r")):
@@ -394,21 +400,68 @@ def get_tmux_pane_width():
     except Exception:
         return "45%"
 
+def spawn_tmux_popup(args):
+    width = os.environ.get("CHEAT_POPUP_WIDTH", "48%")
+    height = os.environ.get("CHEAT_POPUP_HEIGHT", "90%")
+    python_bin = sys.executable
+    script_path = os.path.realpath(__file__)
+
+    filtered_args = [a for a in args if a not in ("--popup", "--split", "--pane", "--inline", "--here", "-H")]
+    popup_cmd = [
+        "tmux", "display-popup",
+        "-E",
+        "-w", width,
+        "-h", height,
+        "-x", "R",
+        "-y", "C",
+        "-b", "rounded",
+        "-T", " 📖 速查手册 (CheatSheet) ",
+        "-e", "CHEAT_IN_PANE=1",
+        python_bin, script_path
+    ] + filtered_args
+
+    try:
+        subprocess.run(popup_cmd)
+        return 0
+    except Exception:
+        return None
+
 def spawn_tmux_pane(args):
     close_existing_cheat_pane()
     width = get_tmux_pane_width()
     python_bin = sys.executable
     script_path = os.path.realpath(__file__)
 
-    filtered_args = [a for a in args if a not in ("--inline", "--here", "-H", "--no-split")]
+    # Save original window layout to restore cleanly on exit
+    try:
+        orig_layout = subprocess.check_output(
+            ["tmux", "display-message", "-p", "#{window_layout}"],
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        orig_win = subprocess.check_output(
+            ["tmux", "display-message", "-p", "#{window_id}"],
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        orig_layout = ""
+        orig_win = ""
+
+    filtered_args = [a for a in args if a not in ("--popup", "--split", "--pane", "--inline", "--here", "-H")]
     split_cmd = [
         "tmux", "split-window",
         "-fh",
         "-l", width,
         "-e", "CHEAT_IN_PANE=1",
+    ]
+    if orig_layout and orig_win:
+        split_cmd.extend([
+            "-e", f"CHEAT_RESTORE_LAYOUT={orig_layout}",
+            "-e", f"CHEAT_WINDOW_ID={orig_win}",
+        ])
+    split_cmd.extend([
         "-P", "-F", "#{pane_id}",
         python_bin, script_path
-    ] + filtered_args
+    ] + filtered_args)
 
     try:
         pane_id = subprocess.check_output(split_cmd, text=True).strip()
@@ -425,17 +478,31 @@ def spawn_tmux_pane(args):
     except Exception:
         return None
 
+def cleanup_and_exit(code=0):
+    restore_layout = os.environ.get("CHEAT_RESTORE_LAYOUT")
+    win_id = os.environ.get("CHEAT_WINDOW_ID")
+    if restore_layout and win_id and os.environ.get("TMUX"):
+        subprocess.run(
+            ["tmux", "kill-pane", ";", "select-layout", "-t", win_id, restore_layout],
+            stderr=subprocess.DEVNULL
+        )
+    sys.exit(code)
+
 def main():
     args = sys.argv[1:]
 
-    # When in tmux, spawn a sidebar pane on the far right
-    if should_spawn_tmux_pane(args):
-        ret = spawn_tmux_pane(args)
+    # When in tmux, handle popup or layout-preserved split
+    if should_spawn_tmux(args):
+        use_split = any(flag in args for flag in ("--split", "--pane")) or os.environ.get("CHEAT_MODE") == "split"
+        if use_split:
+            ret = spawn_tmux_pane(args)
+        else:
+            ret = spawn_tmux_popup(args)
         if ret == 0:
             sys.exit(0)
 
-    # Clean inline flags
-    args = [a for a in args if a not in ("--inline", "--here", "-H", "--no-split")]
+    # Clean flags
+    args = [a for a in args if a not in ("--popup", "--split", "--pane", "--inline", "--here", "-H")]
 
     # Check raw output flag
     raw = False
