@@ -2,3 +2,15 @@
 	ui = auto
 [init]
 	defaultRefFormat = files
+[user]
+	name = Tian Zhang
+	email = element@google.com
+	signingKey = /usr/local/google/home/element/.ssh/auto_init_ed25519.pub
+[gpg]
+	format = ssh
+[commit]
+	gpgSign = true
+[tag]
+	gpgSign = true
+[gpg "ssh"]
+	allowedSignersFile = /usr/local/google/home/element/.ssh/allowed_signers
