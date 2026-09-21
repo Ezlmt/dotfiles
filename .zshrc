@@ -15,6 +15,11 @@ export ZSH="$HOME/.oh-my-zsh"
 # Set name of the theme to load
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
+# On Termux (Google Play Store W^X policy), disable external gitstatusd binary download
+if [[ -n "${TERMUX_VERSION:-}" || -d "/data/data/com.termux/files/usr" ]]; then
+  typeset -g POWERLEVEL9K_DISABLE_GITSTATUS=true
+fi
+
 # Speed up startup: Disable compaudit security checks (safe on single-user dev machines)
 ZSH_DISABLE_COMPFIX="true"
 

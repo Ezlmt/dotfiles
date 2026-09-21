@@ -187,6 +187,13 @@
   # really need it.
   typeset -g POWERLEVEL9K_DISABLE_HOT_RELOAD=true
 
+  # On Android Termux (especially Google Play Store build), downloading/executing external
+  # gitstatusd binary in ~/.cache/gitstatus is blocked by SELinux W^X policy.
+  # Disable gitstatusd on Termux so Powerlevel10k falls back to native git seamlessly.
+  if [[ -n "${TERMUX_VERSION:-}" || -d "/data/data/com.termux/files/usr" ]]; then
+    typeset -g POWERLEVEL9K_DISABLE_GITSTATUS=true
+  fi
+
   # If p10k is already loaded, reload configuration.
   # This works even with POWERLEVEL9K_DISABLE_HOT_RELOAD=true.
   (( ! $+functions[p10k] )) || p10k reload
