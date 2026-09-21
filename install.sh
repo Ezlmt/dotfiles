@@ -40,6 +40,10 @@ mkdir -p "${HOME}/.local/bin" "${HOME}/.config" "${HOME}/go/bin"
 PROFILE=""
 INTERACTIVE=true
 
+is_termux() {
+  [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux/files/usr" ]
+}
+
 detect_recommended_profile() {
   if [ -d "/google" ] || [[ "$(hostname 2>/dev/null)" == *".googlers.com"* ]]; then
     echo "android-hal"
@@ -88,7 +92,9 @@ resolve_profile() {
   recommended="$(detect_recommended_profile)"
 
   if [ -z "$PROFILE" ]; then
-    if [ "$INTERACTIVE" = true ] && [ -t 0 ]; then
+    if is_termux; then
+      PROFILE="core"
+    elif [ "$INTERACTIVE" = true ] && [ -t 0 ]; then
       echo
       info "Please select your development environment profile:"
       echo "  1) core        - Universal base configuration (Personal / Linux / macOS)"
@@ -153,6 +159,20 @@ install_packages() {
   info "Checking and installing required system packages..."
   OS="$(uname -s)"
   ARCH="$(uname -m)"
+
+  if is_termux; then
+    info "Termux (Android) detected! Installing native packages via pkg..."
+    pkg update -y || true
+    pkg install -y git curl zsh tmux neovim ripgrep fd fzf zoxide lazygit yazi \
+      unzip clang make lua-language-server openssh || true
+
+    # Ensure no foreign Linux glibc binaries in ~/.local/bin shadow Termux's native $PREFIX/bin binaries
+    rm -f "${HOME}/.local/bin/nvim" "${HOME}/.local/bin/lazygit" \
+          "${HOME}/.local/bin/yazi" "${HOME}/.local/bin/ya" "${HOME}/.local/bin/zoxide" 2>/dev/null || true
+
+    success "Termux native packages installed."
+    return 0
+  fi
 
   case "$OS" in
     Darwin)
@@ -453,9 +473,29 @@ setup_yazi() {
 }
 
 # ------------------------------------------------------------------------------
-# 7. Shell Default Switch
+# 7. Shell Default Switch & Termux Font Setup
 # ------------------------------------------------------------------------------
 setup_shell() {
+  if is_termux; then
+    if [ ! -f "${HOME}/.termux/font.ttf" ]; then
+      info "Installing Maple Mono NF Nerd Font for Termux..."
+      mkdir -p "${HOME}/.termux"
+      local tmp_zip="${TMPDIR:-${HOME}/.cache}/MapleMono-NF.zip"
+      if curl -fsSL -o "$tmp_zip" "https://github.com/subframe7536/maple-font/releases/latest/download/MapleMono-NF.zip"; then
+        unzip -q -o "$tmp_zip" "MapleMono-NF-Regular.ttf" -d "${HOME}/.termux/" 2>/dev/null || true
+        if [ -f "${HOME}/.termux/MapleMono-NF-Regular.ttf" ]; then
+          mv -f "${HOME}/.termux/MapleMono-NF-Regular.ttf" "${HOME}/.termux/font.ttf"
+          command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+          success "Installed Maple Mono NF to ~/.termux/font.ttf"
+        fi
+        rm -f "$tmp_zip"
+      fi
+    fi
+    info "Setting Termux default login shell to Zsh..."
+    chsh -s zsh || true
+    return 0
+  fi
+
   if command -v zsh >/dev/null 2>&1; then
     ZSH_PATH="$(command -v zsh)"
     if [ "$SHELL" != "$ZSH_PATH" ]; then

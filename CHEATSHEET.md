@@ -326,6 +326,41 @@ Lazygit 是当前最流行的 Go 语言编写的交互式 Git TUI 工具。它�
 | `Ctrl + R` | FZF 历史命令搜索 | 高亮搜索历史执行过的命令，回车立即上屏 |
 | `jsk` | Jetski CLI | 随时调起 Google Jetski AI 编程助手命令行 |
 
+### 🔎 文件查找：`fd`（现代版 find）
+
+> `fd` 默认：**智能大小写**（全小写=忽略大小写）、**正则匹配文件名**、**自动跳过 `.gitignore` 里的文件和隐藏文件**、**并行遍历**，所以比 `find` 快且少打字。
+
+| 命令 | 说明 |
+| :--- | :--- |
+| `fd cfg` | 在当前目录递归找名字里含 `cfg` 的文件/目录（不用写 `-name "*cfg*"`） |
+| `fd cfg src/` | 只在 `src/` 下找 |
+| `fd -e cc -e h lyric` | 只看 `.cc` / `.h` 后缀 |
+| `fd -t f` / `-t d` / `-t l` | 只要文件 / 只要目录 / 只要符号链接 |
+| `fd -H` | 连隐藏文件一起找（默认跳过） |
+| `fd -I` | 忽略 `.gitignore` 规则，全都找 |
+| `fd -g '*_test.cc'` | 用 glob 而不是正则 |
+| `fd -d 2 pattern` | 限制递归深度为 2 层 |
+| `fd -p 'src/.*/util'` | 用**完整路径**匹配，而不是只匹配文件名 |
+| `fd pattern -x rg TODO` | 对每个结果**逐个**执行命令（`{}` 为占位符） |
+| `fd pattern -X nvim` | 把**所有**结果一次性丢给命令（相当于 `xargs`） |
+| `fd -t f . \| fzf` | 配合 fzf 交互挑选（`Ctrl+T` 已内置这条） |
+
+**和 `find` 的对照**
+
+| 目的 | find | fd |
+| :--- | :--- | :--- |
+| 按名字找 | `find . -iname "*cfg*"` | `fd cfg` |
+| 只找目录 | `find . -type d -name build` | `fd -t d build` |
+| 按后缀 | `find . -name "*.cc"` | `fd -e cc` |
+| 批量执行 | `find . -name "*.log" -exec rm {} \;` | `fd -e log -x rm` |
+
+> **文件名高亮**：`.zshrc` 里给 `find` 加了包装函数，输出到终端时会把每行**最后一段文件名**加粗高亮（目录前缀保持正常颜色）。
+> - 调色：`FIND_HL_NAME='1;33'`（加粗黄）、`FIND_HL_DIR='90'`（目录变灰）写进 `~/.zshrc.local`
+> - 管道 / `$(...)` / 重定向、以及 `-exec`、`-print0`、`--help` 等场景会自动输出原始结果，不污染脚本
+> - `fd` 默认保持**原生配色**（目录前缀蓝、按文件类型着色）；想让它也和 `find` 一样只高亮文件名，设 `FIND_HL_FD=1`
+> - 临时用原版：`command find ...` 或 `\find ...`
+
+
 ---
 
 ## 8. 🧭 市面优秀命令提示与速查工具横向对比与进阶玩法

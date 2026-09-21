@@ -91,6 +91,7 @@ export PATH
 # ==============================================================================
 # FZF integration
 for fzf_keybindings in \
+  "${PREFIX:-/data/data/com.termux/files/usr}/share/fzf/key-bindings.zsh" \
   "/usr/share/doc/fzf/examples/key-bindings.zsh" \
   "/opt/homebrew/opt/fzf/shell/key-bindings.zsh" \
   "/usr/local/opt/fzf/shell/key-bindings.zsh" \
@@ -102,6 +103,7 @@ for fzf_keybindings in \
 done
 
 for fzf_completion in \
+  "${PREFIX:-/data/data/com.termux/files/usr}/share/fzf/completion.zsh" \
   "/usr/share/doc/fzf/examples/completion.zsh" \
   "/opt/homebrew/opt/fzf/shell/completion.zsh" \
   "/usr/local/opt/fzf/shell/completion.zsh"; do
@@ -165,6 +167,90 @@ tm() {
 alias cheat='halhelp'
 alias cheatsheet='halhelp'
 alias hhelp='halhelp'
+
+# ------------------------------------------------------------------------------
+# find / fd: highlight the last path component (the file name) of every result
+# ------------------------------------------------------------------------------
+# Tune the colors with raw SGR codes, e.g. FIND_HL_NAME='1;33' for bold yellow.
+# FIND_HL_DIR is empty by default: the directory prefix keeps the terminal's
+# normal foreground color. Set it to e.g. '90' (grey) or '2' (dim) to fade it.
+: ${FIND_HL_DIR=}        # no styling for the leading directories
+: ${FIND_HL_NAME:=1;36}  # bold cyan for the file name
+
+# GNU sed can stream line-by-line; fall back gracefully elsewhere.
+if sed -u '' </dev/null >/dev/null 2>&1; then
+  _find_hl_sedopts=(-u -E)
+else
+  _find_hl_sedopts=(-E)
+fi
+
+# Filter: color the basename of each path read on stdin. A trailing slash (fd
+# marks directories that way) stays attached to the highlighted name.
+_hl_basename() {
+  local off=$'\e[0m'
+  local hl=$'\e['"${FIND_HL_NAME}"'m'
+  local dir_on='' dir_off=''
+  if [[ -n "$FIND_HL_DIR" ]]; then
+    dir_on=$'\e['"${FIND_HL_DIR}"'m'
+    dir_off=$off
+  fi
+  sed "${_find_hl_sedopts[@]}" \
+    "s|^(.*/)?([^/]+)(/?)\$|${dir_on}\1${dir_off}${hl}\2${off}\3|"
+}
+
+# True when stdout is a terminal and colors are wanted.
+_hl_wanted() { [[ -t 1 && -z "$NO_COLOR" ]] }
+
+find() {
+  # Pass through untouched when the output is consumed by something other than
+  # a terminal ($(...), pipes, redirections) or when colors are turned off.
+  if ! _hl_wanted; then
+    command find "$@"
+    return
+  fi
+
+  # Pass through for actions whose output must stay byte-exact or is not a
+  # plain list of paths.
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -print0|-printf|-fprint|-fprint0|-fprintf|-fls|-ls|-exec|-execdir|-ok|-okdir|-delete|-help|--help|--version)
+        command find "$@"
+        return
+        ;;
+    esac
+  done
+
+  command find "$@" | _hl_basename
+  return ${pipestatus[1]}
+}
+
+# fd colors the *directory prefix* bold blue and leaves plain files uncolored,
+# which is the opposite of what we want. This wrapper drops fd's own colors and
+# highlights the file name instead -- OFF by default, keep fd's native look.
+# Enable with `FIND_HL_FD=1` in ~/.zshrc.local (or just export it in a shell).
+if [[ -n "$FIND_HL_FD" ]] && command -v fd >/dev/null 2>&1; then
+  fd() {
+    if ! _hl_wanted; then
+      command fd "$@"
+      return
+    fi
+
+    local arg
+    for arg in "$@"; do
+      case "$arg" in
+        -x|--exec|-X|--exec-batch|-0|--print0|-l|--list-details|--color|--color=*|-h|--help|-V|--version)
+          command fd "$@"
+          return
+          ;;
+      esac
+    done
+
+    command fd --color never "$@" | _hl_basename
+    return ${pipestatus[1]}
+  }
+fi
+
 
 # ==============================================================================
 # Profiles & Local Overrides
