@@ -468,6 +468,8 @@ setup_yazi() {
   if command -v ya >/dev/null 2>&1; then
     info "Deploying Yazi packages via ya pkg..."
     ya pkg install || true
+    # Relax @since plugin version headers so slightly older distro/Termux Yazi builds (e.g. 26.5.x) work seamlessly
+    sed -i 's/--- @since 26\.[0-9]*\.[0-9]*/--- @since 25.5.31/g' "${YAZI_CONFIG_DIR}/plugins/"*/*.lua 2>/dev/null || true
   fi
   success "Yazi configuration ready."
 }
