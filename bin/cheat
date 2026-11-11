@@ -42,6 +42,13 @@ DATA = [
             ("ctop", "直达 Android 工程根目录", "cd $ANDROID_BUILD_TOP (~/android_workspace)"),
             ("cout", "直达当前 Target 编译产物目录", "cd $OUT (.../out/target/product/sasquatch)"),
             ("mcompdb", "生成/更新 Clangd 编译数据库 (LSP)", "自动生成 compile_commands.json，消灭虚假红线与报错"),
+            ("hws ls / use <ws>", "查看所有并行工作区 / 切换激活工作区", "自动切换 $ANDROID_BUILD_TOP & $OUT 并 cd 到 HAL 目录"),
+            ("hws new / rm <ws>", "新建 / 删除并行工作区 (0额外源码磁盘)", "16线程硬链接底座 + 挂载 git worktree + 独立 out/"),
+            ("hws sync [-r]", "秒级同步相机关联外围仓 + 刷新子工作区硬链接", "自动拉取 gs-common/camera 等并同步到 ~/workspaces/*"),
+            ("hws refresh [ws]", "本地 1 秒刷新子工作区外围相机目录硬链接", "把 main 最新外围目录 cp -al 同步到 ~/workspaces/*"),
+            ("lpush", "极速编译 liblyric_hwl.so 并 bind-mount 热替换", "免重装 APEX 重启手机，5 秒热更新 .so 并同步符号表"),
+            ("ltest [-d] [Filter]", "自动识别改动文件并跑 Host / 真机 (-d) 单测", "无需手动查 Android.bp test 名，自动编译运行"),
+            ("lprof record/diff", "一键真机录 5s simpleperf 并生成火焰图链接", "自动出 BackendCoreNode 与 LwisEventThread 火焰图"),
         ],
     },
     {

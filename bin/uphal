@@ -4,8 +4,20 @@
 # ==============================================================================
 set -euo pipefail
 
-ANDROID_TOP="${ANDROID_BUILD_TOP:-$HOME/android_workspace}"
-OUT_DIR="${OUT:-$ANDROID_TOP/out/target/product/sasquatch}"
+# Auto-detect if current directory is inside ~/workspaces/<name>
+if [[ "$PWD" == "$HOME/workspaces/"* ]]; then
+  _ws_rel="${PWD#"$HOME/workspaces/"}"
+  _ws_name="${_ws_rel%%/*}"
+  if [[ -d "$HOME/workspaces/$_ws_name" ]]; then
+    ANDROID_TOP="$HOME/workspaces/$_ws_name"
+  fi
+fi
+ANDROID_TOP="${ANDROID_TOP:-${ANDROID_BUILD_TOP:-$HOME/android_workspace}}"
+if [[ -n "${OUT:-}" && "$OUT" == "$ANDROID_TOP/"* ]]; then
+  OUT_DIR="$OUT"
+else
+  OUT_DIR="$ANDROID_TOP/out/target/product/sasquatch"
+fi
 TARGET_APEX="${OUT_DIR}/vendor/apex/com.google.pixel.camera.hal.apex"
 
 USE_DEBUG=0
@@ -55,14 +67,22 @@ fi
 echo "=========================================="
 
 echo "🚀 Installing APEX to device..."
+"${ADB_CMD[@]}" shell "su 0 sh -c '
+  am force-stop com.google.android.GoogleCamera 2>/dev/null || true
+  am force-stop com.google.android.GoogleCameraEng 2>/dev/null || true
+  sleep 1
+  nsenter -t 1 -m -- umount -l /apex/com.google.pixel.camera.hal/lib64/liblyric_hwl.so 2>/dev/null || true
+  nsenter -t 1 -m -- umount -l /apex/com.google.pixel.camera.hal/lib64 2>/dev/null || true
+  umount -l /apex/com.google.pixel.camera.hal/lib64/liblyric_hwl.so 2>/dev/null || true
+  umount -l /apex/com.google.pixel.camera.hal/lib64 2>/dev/null || true
+'" || true
 "${ADB_CMD[@]}" install --apex --force-non-staged "$TARGET_APEX"
 
 echo "🔄 Restarting camera service..."
-if "${ADB_CMD[@]}" root >/dev/null 2>&1; then
-  "${ADB_CMD[@]}" wait-for-device
-  "${ADB_CMD[@]}" shell pkill -f camera || true
-else
-  "${ADB_CMD[@]}" shell "su 0 pkill -f camera || pkill -f camera || true"
-fi
+"${ADB_CMD[@]}" shell "su 0 sh -c '
+  nsenter -t 1 -m -- umount -l /apex/com.google.pixel.camera.hal/lib64/liblyric_hwl.so 2>/dev/null || true
+  nsenter -t 1 -m -- umount -l /apex/com.google.pixel.camera.hal/lib64 2>/dev/null || true
+  setprop ctl.restart vendor.camera-provider-2-7-google 2>/dev/null || killall -9 android.hardware.camera.provider@2.7-service-google 2>/dev/null || true
+'" || true
 
 echo "✅ Lyric HAL updated successfully!"

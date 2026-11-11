@@ -269,3 +269,35 @@ fi
 
 # Machine-specific uncommitted local overrides
 [[ ! -f ~/.zshrc.local ]] || source ~/.zshrc.local
+
+# Jetski: launcher with Ctrl+V image paste & SSH remote mic (see ~/jetski-config/tools/jsk)
+export JETSKI_MIC="${JETSKI_MIC:-127.0.0.1:24713}"
+alias jsk="$HOME/.local/bin/jsk"
+
+# Refresh the p10k `gcert` prompt cache right after running `gcert`.
+# Also auto-heal ~/.tmp/.element.ssh_auth_sock if the symlink target is dead
+# (e.g., after CRD disconnects or a previous SSH session closes).
+_ensure_ssh_auth_sock() {
+  local sock_link="$HOME/.tmp/.element.ssh_auth_sock"
+  if [[ ! -S "$sock_link" ]]; then
+    local cand
+    for cand in "$HOME"/.ssh/agent/s.*.sshd.*(Nom); do
+      if [[ -S "$cand" ]]; then
+        mkdir -p "$HOME/.tmp"
+        ln -sf "$cand" "$sock_link"
+        break
+      fi
+    done
+  fi
+}
+_ensure_ssh_auth_sock
+
+if (( $+commands[gcert] )); then
+  gcert() {
+    _ensure_ssh_auth_sock
+    command gcert "$@"
+    local rc=$?
+    rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/gcert_exp_epoch"
+    return $rc
+  }
+fi

@@ -526,6 +526,19 @@ main() {
   setup_yazi
   setup_shell
 
+  if [ "$PROFILE" = "android-hal" ]; then
+    info "Setting up Jetski CLI & Lyric HAL toolchain (Ezlmt/jetski-config)..."
+    if [ -x "${HOME}/jetski-config/setup.sh" ]; then
+      "${HOME}/jetski-config/setup.sh" || warn "jetski-config setup encountered a warning."
+    elif ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@github.com 2>&1 | grep -q "successfully authenticated"; then
+      git clone "git@github.com:${GITHUB_USER}/jetski-config.git" "${HOME}/jetski-config" && \
+        "${HOME}/jetski-config/setup.sh" || warn "Could not clone jetski-config via GitHub SSH."
+    elif ssh -o BatchMode=yes -o ConnectTimeout=5 ezlmt-l.c.googlers.com "true" 2>/dev/null; then
+      rsync -az ezlmt-l.c.googlers.com:~/jetski-config/ "${HOME}/jetski-config/" && \
+        "${HOME}/jetski-config/setup.sh" || warn "Could not sync jetski-config from ezlmt-l."
+    fi
+  fi
+
   echo
   echo -e "${GREEN}${BOLD}==============================================================${NC}"
   echo -e "${GREEN}${BOLD}   All Done! Development environment configured successfully!  ${NC}"

@@ -34,6 +34,15 @@
 | `ctop` | 直达 Android 根目录 | `cd $ANDROID_BUILD_TOP` (`~/android_workspace`) |
 | `cout` | 直达编译产物目录 | `cd $OUT` (`.../out/target/product/sasquatch`) |
 | `mcompdb` | **生成 Clangd 编译数据库** | **LSP 神器**：生成 `compile_commands.json`，彻底消灭头文件缺失报错 |
+| `hws ls` | **查看所有并行工作区** | 列出 `main` 与 `~/workspaces/*` 下的所有工作区、对应分支及编译状态 |
+| `hws new <name> [branch]` | **新建并行开发/编译工作区** | 16 线程硬链接 Android 底座（0 源码磁盘开销）+ 挂载 `LyricCameraHAL/src` git worktree |
+| `hws use <name\|main>` | **切换当前窗口激活工作区** | 自动切换当前终端的 `$ANDROID_BUILD_TOP` 与 `$OUT` 并 `cd` 进入对应 HAL 目录 |
+| `hws sync [-r]` / `lsync` | **秒级同步相机外围仓 + 刷新硬链接** | 同步相机紧耦合外围仓（含 `gs-common/proprietary/camera` 稀疏检出）并自动刷新 `~/workspaces/*` |
+| `hws refresh [name]` | **本地 1 秒刷新外围相机目录硬链接** | 将 `main` 的最新外围相机目录通过 `cp -al` 增量刷新到所有（或指定）子工作区 |
+| `hws rm <name>` | **删除并行工作区** | 清理对应的 `git worktree` 并删除 `~/workspaces/<name>` 释放 `out/` 空间 |
+| `lpush` | **极速热替换 `liblyric_hwl.so`** | 免重装整包 APEX，只编 `liblyric_hwl` 并 bind-mount 到手机，同时自动更新 `$OUT/symbols` |
+| `ltest [-d] [Filter]` | **智能识别改动并运行单测** | 自动根据 `git diff` 匹配 `cc_test`，支持 Host 秒跑或 `-d` 推手机 ARM64 运行 |
+| `lprof record / diff` | **一键真机 `simpleperf` + 火焰图** | 自动录 5 秒 `raw-inst-retired`、转 `.pprof`，直出 `BackendCoreNode` & `LwisEventThread` 火焰图链接 |
 
 ---
 

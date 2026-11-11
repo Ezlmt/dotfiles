@@ -65,6 +65,7 @@
     command_execution_time    # previous command duration
     virtualenv                # python virtual environment
     context                   # user@host
+    gcert                     # Google LOAS2/CorpSSH cert countdown
     time                      # current time
     # =========================[ Line #2 ]=========================
     newline                   # \n
@@ -159,6 +160,46 @@
   # commands will contain the start times of their commands rather than the end times of
   # their preceding commands.
   typeset -g POWERLEVEL9K_TIME_UPDATE_ON_COMMAND=false
+
+  # Custom `gcert` segment: shows LOAS2/CorpSSH remaining time next to `time`
+  # without slowing down the prompt. A background refresh runs at most once per
+  # minute and stores the expiry epoch in ~/.cache/gcert_exp_epoch.
+  function prompt_gcert() {
+    (( $+commands[gcertstatus] )) || return
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/gcert_exp_epoch"
+    local now=$EPOCHSECONDS exp=0 mtime=0
+    if [[ -r $cache ]]; then
+      read -r exp mtime < $cache 2>/dev/null
+    fi
+    # Refresh in background when cache is missing or older than 60s.
+    if (( now - ${mtime:-0} > 60 )); then
+      (
+        {
+          local out e min=0
+          out=$(gcertstatus --format=varz 2>/dev/null)
+          for e in ${=${out#*certificate}}; do
+            e=${e#*:}
+            if [[ $e == <-> ]] && (( min == 0 || e < min )); then
+              min=$e
+            fi
+          done
+          mkdir -p "${cache:h}"
+          print -r -- "$min $EPOCHSECONDS" >| "$cache.$$" && mv -f "$cache.$$" "$cache"
+        } &!
+      )
+    fi
+    (( ${mtime:-0} == 0 )) && return
+    local rem=$(( ${exp:-0} - now ))
+    if (( rem <= 0 )); then
+      p10k segment -f 1 -t '🔑expired'
+    elif (( rem < 3600 )); then
+      p10k segment -f 1 -t "🔑$((rem / 60))m"
+    elif (( rem < 7200 )); then
+      p10k segment -f 3 -t "🔑$((rem / 3600))h$(((rem % 3600) / 60))m"
+    else
+      p10k segment -f 242 -t "🔑$((rem / 3600))h$(((rem % 3600) / 60))m"
+    fi
+  }
 
   # Transient prompt works similarly to the builtin transient_rprompt option. It trims down prompt
   # when accepting a command line. Supported values:
