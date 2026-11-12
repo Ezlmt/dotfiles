@@ -58,6 +58,10 @@ if [[ -n "$SERIAL" ]]; then
   ADB_CMD+=( -s "$SERIAL" )
 fi
 
+if [[ "${LQUEUE_DEVICE_LOCK_HELD:-0}" != "1" ]] && [[ -x "$HOME/.local/bin/lqueue" ]]; then
+  exec "$HOME/.local/bin/lqueue" device -s "$SERIAL" -l "uphal $(basename "$TARGET_APEX")" -- "$0" "$@"
+fi
+
 echo "=========================================="
 echo "📱 Target APEX: $(basename "$TARGET_APEX")"
 echo "📂 Location   : $TARGET_APEX"
